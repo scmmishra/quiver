@@ -1,59 +1,55 @@
-<script setup>
+<script lang="ts" setup>
 import SVGText from "./SVGText.vue";
 import HoverRect from "./HoverRect.vue";
 import BarRect from "./BarRect.vue";
 
 import { ref, watch } from "vue";
 
-import { provideAxisChart } from "composables/AxisChart/provider";
-import useGeometry from "composables/AxisChart/useGeometry";
-import useDataset from "composables/AxisChart/useDataset";
+import { provideAxisChart } from "../../composables/AxisChart/provider";
+import useGeometry from "../../composables/AxisChart/useGeometry";
+import useDataset from "../../composables/AxisChart/useDataset";
 
-/**
- * @typedef {Object} DatasetItem
- * @property {number[]} values - Array of numerical values
- * @property {string} name - Name of the dataset
- * @property {string} color - Color of the dataset
- * @property {'bar' | 'line'} type - Type of the dataset
- */
+export type DatasetItem = {
+  values: number[];
+  name: string;
+  color: string;
+  type?: "bar" | "line";
+};
 
-/**
- * @type {import('vue').PropType<{
- *   labels: string[],
- *   dataset: DatasetItem[],
- *   height?: number,
- *   maxWidth?: number,
- *   spaceRatio?: number,
- *   xOffset?: number,
- *   yOffset?: number,
- *   stacked?: boolean,
- *   disableAnimation?: boolean,
- *   animationDuration?: number
- * }>}
- */
-const props = defineProps({
-  labels: { type: Array, required: true },
-  dataset: { type: Array, required: true },
-  stacked: { type: Boolean, default: false },
-  height: { type: Number, default: null },
-  maxWidth: { type: Number, default: 800 },
-  spaceRatio: { type: Number, default: 0.2 },
-  xOffset: { type: Number, default: 20 },
-  yOffset: { type: Number, default: 20 },
-  disableAnimation: { type: Boolean, default: false },
-  animationDuration: { type: Number, default: 100 },
-  formatX: { type: Function, default: null },
-  formatY: { type: Function, default: null },
+export interface Props {
+  labels: Array<string | number | Date>;
+  dataset: { values: number[]; name: string; color: string }[];
+  stacked?: boolean;
+  height?: number;
+  maxWidth?: number;
+  spaceRatio?: number;
+  xOffset?: number;
+  yOffset?: number;
+  disableAnimation?: boolean;
+  animationDuration?: number;
+  formatX?: (label: string | number | Date) => number | string;
+  formatY?: (tick: number) => number | string;
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  stacked: false,
+  xOffset: 20,
+  yOffset: 20,
+  spaceRatio: 0.2,
+  maxWidth: 800,
+  disableAnimation: false,
+  animationDuration: 100,
 });
 
-const hoverIndex = ref(null);
+const hoverIndex = ref(-1);
 const hoverRectX = ref(0);
 const isHovering = ref(false);
 
-const getAnimationDelay = (index) => index * 2;
-const isDate = (obj) => Object.prototype.toString.call(obj) === "[object Date]";
+const getAnimationDelay = (index: number) => index * 2;
+const isDate = (obj: string | number | Date) =>
+  Object.prototype.toString.call(obj) === "[object Date]";
 
-const formatTick = (tick) => {
+const formatTick = (tick: number) => {
   if (props.formatY) {
     return props.formatY(tick);
   }
@@ -61,9 +57,9 @@ const formatTick = (tick) => {
   return tick;
 };
 
-const formatLabel = (label) => {
+const formatLabel = (label: string | number | Date) => {
   if (isDate(label) && !props.formatX) {
-    return label.toLocaleDateString();
+    return (label as Date).toLocaleDateString();
   }
 
   if (props.formatX) {
@@ -73,7 +69,8 @@ const formatLabel = (label) => {
   return label;
 };
 
-const { maxValue, ticks, maxEffectiveValue } = useDataset(props);
+const { maxValue, ticks, maxEffectiveValue, cleanedDataset } =
+  useDataset(props);
 
 const {
   leftmargin,
@@ -88,7 +85,7 @@ const {
 } = useGeometry(props, maxEffectiveValue);
 
 watch(hoverIndex, (newIndex) => {
-  if (newIndex !== null) {
+  if (newIndex !== -1) {
     hoverRectX.value = getXPosition(newIndex) - barGap.value / 2;
     isHovering.value = true;
   } else {
@@ -99,17 +96,13 @@ watch(hoverIndex, (newIndex) => {
 provideAxisChart({
   yOffset: props.yOffset,
   xOffset: props.xOffset,
-  dataset: props.dataset,
   animationDuration: props.animationDuration,
   disableAnimation: props.disableAnimation,
   stacked: props.stacked,
   spaceRatio: props.spaceRatio,
+  dataset: cleanedDataset,
 
   hoverIndex,
-  getXPosition,
-  barWidth,
-  barGap,
-  containerHeight,
   getAnimationDelay,
 
   // from useGeometry
@@ -132,7 +125,7 @@ provideAxisChart({
 
 <template>
   <svg :width="containerWidth" :height="containerHeight">
-    <HoverRect />
+    <HoverRect v-if="isHovering" />
     <g class="va-y-ticks">
       <SVGText
         v-for="value in ticks"
@@ -166,7 +159,7 @@ provideAxisChart({
       />
     </g>
     <g
-      v-for="(item, outerIdx) in dataset"
+      v-for="(item, outerIdx) in cleanedDataset"
       :data-va-name="item.name"
       :data-width="drawWidth"
       class="va-bars"
@@ -191,7 +184,7 @@ provideAxisChart({
         :height="containerHeight - 2 * yOffset"
         fill="transparent"
         @mouseover="() => (hoverIndex = index)"
-        @mouseleave="() => (hoverIndex = null)"
+        @mouseleave="() => (hoverIndex = -1)"
       />
     </g>
   </svg>

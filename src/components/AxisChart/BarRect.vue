@@ -1,27 +1,27 @@
-<script setup>
-import { computed } from "vue";
+<script lang="ts" setup>
+import { computed, ref, watch } from "vue";
 import AnimateSVG from "./AnimateSVG.vue";
-import { useAxisChart } from "composables/AxisChart/provider";
+import { useAxisChart } from "../../composables/AxisChart/provider";
 
-/**
- * @typedef {Object} BarProps
- * @property {number} value - The value represented by the bar
- * @property {string} name - The name or label of the bar
- * @property {number} outerIdx - The outer index for grouped or stacked bars
- * @property {number} index - The index of the bar within its group
- * @property {string} color - The color of the bar
- */
-
-/**
- * @type {import('vue').PropType<BarProps>}
- */
 const props = defineProps({
   value: { type: Number, required: true },
   name: { type: String, required: true },
   outerIdx: { type: Number, required: true },
   index: { type: Number, required: true },
   color: { type: String, required: true },
+  stacked: { type: Boolean, required: true },
 });
+
+const renderKey = ref(0);
+watch(
+  () => [props.value, props.outerIdx, props.index, props.stacked],
+  () => {
+    // [TODO] Find a better way to figure this out
+    // Remove this and see, the bar rects when toggled between stacked and grouped
+    // doesn't render correctly if animations are present
+    renderKey.value++; // Increment the key to force re-render
+  },
+);
 
 const {
   getXPosition,
@@ -32,42 +32,40 @@ const {
   getHeight,
   getAnimationDelay,
   dataset,
-  stacked,
-  disableAnimation,
   spaceRatio,
 } = useAxisChart();
 
-const getPreviousHeight = (index, datasetIdx) => {
+function getPreviousHeight(index: number, datasetIdx: number): number {
   if (datasetIdx === 0) {
     return 0;
   }
 
-  const prevValues = dataset[datasetIdx - 1];
+  const prevValues = dataset.value[datasetIdx - 1];
   const previousValue = prevValues.values[index];
 
   // count down to zero idx to capture the heights of all pervious datasets
   return getHeight(previousValue) + getPreviousHeight(index, datasetIdx - 1);
-};
+}
 
 const barHeight = computed(() => getHeight(props.value));
 const startY = computed(() => containerHeight.value - yOffset);
 
 const numberOfCols = computed(() => {
-  if (stacked) {
+  if (props.stacked) {
     return 1;
   }
-  return dataset.length;
+  return dataset.value.length;
 });
 
 const columnWidth = computed(() => {
-  if (stacked) {
+  if (props.stacked) {
     return barWidth.value;
   }
   return (barWidth.value * (1 - spaceRatio)) / numberOfCols.value;
 });
 
 const xPos = computed(() => {
-  if (stacked) {
+  if (props.stacked) {
     // For stacked bars, all bars in a stack share the same x-position
     // Just return the x-position for this index
     return getXPosition(props.index);
@@ -113,7 +111,7 @@ const xPos = computed(() => {
 });
 
 const yPos = computed(() => {
-  if (stacked) {
+  if (props.stacked) {
     /*
      SVG Y axis is inverted and starts from the top
      -------------------------- y = 0
@@ -135,13 +133,14 @@ const yPos = computed(() => {
 
 <template>
   <rect
+    :key="renderKey"
     :x="xPos"
-    :y="disableAnimation ? yPos : startY"
+    :y="yPos"
     :data-idx="index"
     :data-value="value"
     :data-name="name"
     :width="columnWidth"
-    :height="disableAnimation ? barHeight : 0"
+    :height="barHeight"
     :fill="color"
   >
     <AnimateSVG
